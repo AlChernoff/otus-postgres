@@ -1,0 +1,25 @@
+services:
+  postgres:
+    image: postgres:17
+    container_name: postgres-server
+    environment:
+      POSTGRES_DB: orders
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5433:5432"
+    volumes:
+      - ${HOME}/postgres-data:/var/lib/postgresql/data
+    networks:
+      - postgres-net
+
+  psql:
+    image: postgres:17
+    container_name: postgres-client
+    entrypoint: ["sleep", "infinity"]
+    networks:
+      - postgres-net
+
+networks:
+  postgres-net:
+    driver: bridge

@@ -1,0 +1,64 @@
+# HW07 commands (run on Ubuntu VM; PostgreSQL 17)
+# Main cluster setup
+sudo -u postgres psql -c "ALTER SYSTEM SET checkpoint_timeout = '30s';"
+sudo -u postgres psql -c "ALTER SYSTEM SET log_checkpoints = 'on';"
+sudo pg_ctlcluster 17 main reload
+sudo -u postgres createdb hw07db
+sudo -u postgres /usr/lib/postgresql/17/bin/pgbench -i -s 1 hw07db
+
+# Statistics query: run before and after EACH benchmark; save output separately
+sudo -u postgres psql -d hw07db -c "SELECT clock_timestamp() AS measured_at, w.wal_bytes, c.num_timed, c.num_requested, c.write_time, c.sync_time FROM pg_stat_wal w CROSS JOIN pg_stat_checkpointer c;"
+
+# Sync ON benchmark
+sudo -u postgres psql -c "ALTER SYSTEM SET synchronous_commit = 'on';"
+sudo pg_ctlcluster 17 main reload
+sudo -u postgres /usr/lib/postgresql/17/bin/pgbench -c 8 -j 2 -P 30 -T 600 -U postgres hw07db
+
+# Sync OFF benchmark
+sudo -u postgres psql -c "ALTER SYSTEM SET synchronous_commit = 'off';"
+sudo pg_ctlcluster 17 main reload
+sudo -u postgres /usr/lib/postgresql/17/bin/pgbench -c 8 -j 2 -P 30 -T 600 -U postgres hw07db
+
+# Checkpoint log inspection
+sudo grep -E 'checkpoint (starting|complete)' /var/log/postgresql/postgresql-17-main.log | tail -n 60
+
+# Restore main settings
+sudo -u postgres psql -c "ALTER SYSTEM SET synchronous_commit = 'on';"
+sudo -u postgres psql -c "ALTER SYSTEM RESET checkpoint_timeout;"
+sudo pg_ctlcluster 17 main reload
+
+# Checksum experiment (disposable, isolated test clusters only)
+sudo pg_createcluster 17 checksum_test --port=5433 -- --data-checksums
+sudo pg_ctlcluster 17 checksum_test start
+sudo -u postgres createdb -p 5433 checksumdb
+sudo -u postgres psql -p 5433 -d checksumdb -c "CREATE TABLE checksum_test_data (id integer primary key, description text);"
+sudo -u postgres psql -p 5433 -d checksumdb -c "INSERT INTO checksum_test_data SELECT i, repeat('test_data_',10) FROM generate_series(1,10000) AS i;"
+sudo -u postgres psql -p 5433 -d checksumdb -c "SELECT count(*), pg_relation_filepath('checksum_test_data') FROM checksum_test_data LIMIT 1;"
+sudo pg_ctlcluster 17 checksum_test stop
+sudo mkdir -p /var/backups/hw07
+sudo tar -czpf /var/backups/hw07/checksum_test_backup.tar.gz -C / var/lib/postgresql/17/checksum_test etc/postgresql/17/checksum_test
+sudo -u postgres /usr/lib/postgresql/17/bin/pg_checksums --check -D /var/lib/postgresql/17/checksum_test
+sudo cp -a /var/lib/postgresql/17/checksum_test /var/lib/postgresql/17/checksum_lab
+sudo cp -a /etc/postgresql/17/checksum_test /etc/postgresql/17/checksum_lab
+# In /etc/postgresql/17/checksum_lab/postgresql.conf set data_directory to /var/lib/postgresql/17/checksum_lab and port to 5434
+sudo -u postgres /usr/lib/postgresql/17/bin/pg_checksums --check -D /var/lib/postgresql/17/checksum_lab
+sudo cp -a /var/lib/postgresql/17/checksum_lab/base/16384/16385 /var/backups/hw07/table_before_corruption.bak
+# Intentionally alter one byte ONLY on this stopped disposable checksum_lab copy:
+sudo python3 - <<'PYCODE'
+from pathlib import Path
+p=Path('/var/lib/postgresql/17/checksum_lab/base/16384/16385')
+with p.open('r+b') as f:
+    f.seek(8192+100)
+    b=f.read(1)
+    f.seek(8192+100)
+    f.write(bytes([b[0]^0xFF]))
+PYCODE
+sudo -u postgres /usr/lib/postgresql/17/bin/pg_checksums --check -D /var/lib/postgresql/17/checksum_lab
+sudo pg_ctlcluster 17 checksum_lab start
+sudo -u postgres psql -p 5434 -d checksumdb -c 'SELECT count(*) FROM checksum_test_data;'
+sudo pg_ctlcluster 17 checksum_lab stop
+sudo cp -a /var/backups/hw07/table_before_corruption.bak /var/lib/postgresql/17/checksum_lab/base/16384/16385
+sudo -u postgres /usr/lib/postgresql/17/bin/pg_checksums --check -D /var/lib/postgresql/17/checksum_lab
+# Restart after restore was NOT confirmed successful. Investigate before declaring full recovery:
+# sudo pg_ctlcluster 17 checksum_lab start
+# sudo tail -n 50 /var/log/postgresql/postgresql-17-checksum_lab.log

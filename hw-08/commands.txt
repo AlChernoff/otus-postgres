@@ -1,0 +1,34 @@
+HW08 — команды Linux и инструкции запуска
+
+НАСТРОЙКА (каждая ALTER SYSTEM отдельно):
+sudo -u postgres psql -c "ALTER SYSTEM SET log_lock_waits = on;"
+sudo -u postgres psql -c "ALTER SYSTEM SET deadlock_timeout = '200ms';"
+sudo pg_ctlcluster 17 main reload
+sudo -u postgres psql -c "SHOW log_lock_waits;"
+sudo -u postgres psql -c "SHOW deadlock_timeout;"
+
+СОЗДАНИЕ БАЗЫ (если ещё не создана):
+sudo -u postgres createdb hw08db
+
+ОТКРЫТЬ ТРИ-ЧЕТЫРЕ НЕЗАВИСИМЫХ СЕССИИ:
+sudo -u postgres psql -d hw08db
+
+SQL-команды для каждой сессии: см. commands.sql; НЕ запускать целиком одним файлом.
+
+НАБЛЮДЕНИЕ (в отдельном терминале Linux, НЕ в psql):
+sudo grep -E 'still waiting|acquired .*lock after' /var/log/postgresql/postgresql-17-main.log | tail -n 30
+sudo grep -A 15 -B 3 'deadlock detected' /var/log/postgresql/postgresql-17-main.log | tail -n 80
+
+СОХРАНЕНИЕ АКТУАЛЬНОГО ЖУРНАЛА НА ВМ:
+mkdir -p ~/hw08
+sudo grep -E 'still waiting|acquired .*lock after' /var/log/postgresql/postgresql-17-main.log > ~/hw08/lock_waits_raw.txt
+sudo grep -A 15 -B 3 'deadlock detected' /var/log/postgresql/postgresql-17-main.log > ~/hw08/deadlocks_raw.txt
+
+ВОЗВРАТ КОНФИГУРАЦИИ ПОСЛЕ ЛАБОРАТОРИИ (не подтверждено в переписке):
+sudo -u postgres psql -c "ALTER SYSTEM RESET log_lock_waits;"
+sudo -u postgres psql -c "ALTER SYSTEM RESET deadlock_timeout;"
+sudo pg_ctlcluster 17 main reload
+sudo -u postgres psql -c "SHOW log_lock_waits;"
+sudo -u postgres psql -c "SHOW deadlock_timeout;"
+
+Внутри psql не используйте sudo или grep. Завершайте оставшиеся учебные транзакции ROLLBACK;.

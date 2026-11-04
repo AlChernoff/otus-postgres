@@ -1,0 +1,40 @@
+HW08 — фрагменты PostgreSQL server log, предоставленные пользователем
+База hw08db, журнал /var/log/postgresql/postgresql-17-main.log
+Только подтвержденные выдержки из переписки; не полный серверный журнал.
+
+=== 1. ОЖИДАНИЯ БОЛЕЕ 200 ms ===
+2026-11-04 10:28:39.252 UTC [2948] postgres@hw08db LOG:  process 2948 still waiting for ShareLock on transaction 1262945 after 201.282 ms
+2026-11-04 10:28:45.664 UTC [3258] postgres@hw08db LOG:  process 3258 still waiting for ExclusiveLock on tuple (0,1) of relation 32769 of database 32768 after 200.450 ms
+
+=== 2. DEADLOCK ТРЁХ ТРАНЗАКЦИЙ ===
+2026-11-04 10:34:16.638 UTC [3258] postgres@hw08db ERROR:  deadlock detected
+2026-11-04 10:34:16.638 UTC [3258] postgres@hw08db DETAIL:  Process 3258 waits for ShareLock on transaction 1262952; blocked by process 4733.
+	Process 4733 waits for ShareLock on transaction 1262953; blocked by process 2948.
+	Process 2948 waits for ShareLock on transaction 1262954; blocked by process 3258.
+	Process 3258: UPDATE orders SET status = 'wait_1' WHERE id = 1;
+	Process 4733: UPDATE orders SET status = 'wait_2' WHERE id = 2;
+	Process 2948: UPDATE orders SET status = 'wait_3' WHERE id = 3;
+2026-11-04 10:34:16.638 UTC [3258] postgres@hw08db HINT:  See server log for query details.
+2026-11-04 10:34:16.638 UTC [3258] postgres@hw08db CONTEXT:  while updating tuple (0,5) in relation "orders"
+2026-11-04 10:34:16.638 UTC [3258] postgres@hw08db STATEMENT:  UPDATE orders SET status = 'wait_1' WHERE id = 1;
+2026-11-04 10:34:16.640 UTC [2948] postgres@hw08db LOG:  process 2948 acquired ShareLock on transaction 1262954 after 4379.904 ms
+2026-11-04 10:34:16.640 UTC [2948] postgres@hw08db CONTEXT:  while updating tuple (0,9) in relation "orders"
+2026-11-04 10:34:16.640 UTC [2948] postgres@hw08db STATEMENT:  UPDATE orders SET status = 'wait_3' WHERE id = 3;
+
+=== 3. DEADLOCK ДВУХ UPDATE БЕЗ WHERE (ЧЕРЕЗ ТРИГГЕР) ===
+2026-11-04 10:41:17.193 UTC [5353] postgres@hw08db STATEMENT:  UPDATE deadlock_star SET value = value + 1;
+2026-11-04 10:41:17.194 UTC [5353] postgres@hw08db ERROR:  deadlock detected
+2026-11-04 10:41:17.194 UTC [5353] postgres@hw08db DETAIL:  Process 5353 waits for ShareLock on transaction 1262965; blocked by process 4733.
+	Process 4733 waits for ShareLock on transaction 1262966; blocked by process 5353.
+	Process 5353: UPDATE deadlock_star SET value = value + 1;
+	Process 4733: UPDATE deadlock_star SET value = value + 1;
+2026-11-04 10:41:17.194 UTC [5353] postgres@hw08db HINT:  See server log for query details.
+2026-11-04 10:41:17.194 UTC [5353] postgres@hw08db CONTEXT:  while updating tuple (0,3) in relation "star_resources"
+	SQL statement "UPDATE star_resources SET value = value + 1 WHERE id = 1"
+	PL/pgSQL function star_update_trigger() line 10 at SQL statement
+2026-11-04 10:41:17.194 UTC [5353] postgres@hw08db STATEMENT:  UPDATE deadlock_star SET value = value + 1;
+2026-11-04 10:41:17.196 UTC [4733] postgres@hw08db LOG:  process 4733 acquired ShareLock on transaction 1262966 after 1684.874 ms
+2026-11-04 10:41:17.196 UTC [4733] postgres@hw08db CONTEXT:  while updating tuple (0,4) in relation "star_resources"
+	SQL statement "UPDATE star_resources SET value = value + 1 WHERE id = 2"
+	PL/pgSQL function star_update_trigger() line 6 at SQL statement
+2026-11-04 10:41:17.196 UTC [4733] postgres@hw08db STATEMENT:  UPDATE deadlock_star SET value = value + 1;

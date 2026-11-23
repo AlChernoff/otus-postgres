@@ -1,4 +1,4 @@
--- HW09. PostgreSQL: INNER, LEFT, CROSS, FULL и смешанные соединения.
+Может тут лучше с postgresql_concurrently=True запускать?-- HW09. PostgreSQL: INNER, LEFT, CROSS, FULL и смешанные соединения.
 -- Скрипт самодостаточен; запускать целиком в любой учебной базе PostgreSQL.
 -- Он изменяет только схему hw09 (если она уже существует, пересоздает ее).
 
